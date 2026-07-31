@@ -385,8 +385,20 @@ int main(int argc, char **argv)
 # endif
 	textdomain(GETTEXT_PACKAGE);
 #endif
-	gtk_init(&argc, &argv);
+	/* Resolve the real program path (used to locate data files when
+	   running from an uninstalled build tree) before overriding argv[0]
+	   below. */
 	set_program_path(argv[0]);
+
+	/* Fix argv[0] explicitly: gtk_init() derives the window's WM_CLASS
+	   directly from argv[0] (not from g_get_prgname()), but AppImage's
+	   AppRun wrapper chain re-execs the real binary with a mangled
+	   argv[0] (e.g. "AppRun.wrapped"), which would otherwise leak into
+	   WM_CLASS and break any window-manager rules keyed on the app's
+	   identity. */
+	argv[0] = (char *) "tilem2";
+	g_set_prgname("tilem2");
+	gtk_init(&argc, &argv);
 	g_set_application_name("TilEm");
 
 	menurc_path = get_shared_file_path("menurc", NULL);
