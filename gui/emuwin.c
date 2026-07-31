@@ -266,6 +266,62 @@ static void screen_restyle(GtkWidget* w, GtkStyle* oldstyle G_GNUC_UNUSED,
 	gtk_widget_queue_draw(ewin->lcd);
 }
 
+/* Real TI-85 hardware has non-square LCD pixels: each pixel is
+   ~1.186x taller than it is wide (independently verified against
+   http://www2.math.ou.edu/~amiller/ti85/display.htm). No other
+   supported model has verified physical measurements, so this only
+   applies to the TI-85; everything else keeps the square-pixel
+   assumption unchanged. */
+#define TI85_LCD_PIXEL_HEIGHT_RATIO 1.186012
+
+/* Returns lcdheight adjusted for known non-square physical pixel
+   shapes, for use wherever the code needs the calculator's true
+   on-screen display aspect ratio (as opposed to its raw pixel-buffer
+   dimensions, which are unaffected -- tilem_draw_lcd_image_rgb/indexed
+   still scale the real 128x64 buffer, just into a slightly taller box). */
+static int effective_lcd_height(TilemCalc *calc, int lcdheight)
+{
+	if (calc && calc->hw.model_id == TILEM_CALC_TI85)
+		return (int)(lcdheight * TI85_LCD_PIXEL_HEIGHT_RATIO + 0.5);
+	return lcdheight;
+}
+
+/* Shrink the LCD box (lcdleft,lcdright,lcdtop,lcdbottom), keeping it
+   centered within its original bounds, so its aspect ratio matches
+   lcdwidth:lcdheight (pass effective_lcd_height()'s result, not the
+   raw hw.lcdheight, so this also accounts for non-square pixels).
+   A skin file's own lcd_pos rectangle has no guaranteed relationship
+   to the calc's actual display aspect ratio, so without this the LCD
+   image gets stretched to whatever box the skin happens to define. */
+static void constrain_lcd_box_aspect(int *lcdleft, int *lcdright,
+                                     int *lcdtop, int *lcdbottom,
+                                     int lcdwidth, int lcdheight)
+{
+	int boxw = *lcdright - *lcdleft;
+	int boxh = *lcdbottom - *lcdtop;
+	int target, margin1, margin2;
+
+	if (lcdwidth <= 0 || lcdheight <= 0 || boxw <= 0 || boxh <= 0)
+		return;
+
+	if (boxw * lcdheight > boxh * lcdwidth) {
+		/* box is proportionally wider than the target ratio: shrink width */
+		target = (boxh * lcdwidth) / lcdheight;
+		margin1 = (boxw - target) / 2;
+		margin2 = boxw - target - margin1;
+		*lcdleft += margin1;
+		*lcdright -= margin2;
+	}
+	else if (boxw * lcdheight < boxh * lcdwidth) {
+		/* box is proportionally taller than the target ratio: shrink height */
+		target = (boxw * lcdheight) / lcdwidth;
+		margin1 = (boxh - target) / 2;
+		margin2 = boxh - target - margin1;
+		*lcdtop += margin1;
+		*lcdbottom -= margin2;
+	}
+}
+
 static void skin_size_allocate(GtkWidget *widget, GtkAllocation *alloc,
                                gpointer data)
 {
@@ -308,6 +364,13 @@ static void skin_size_allocate(GtkWidget *widget, GtkAllocation *alloc,
 	lcdright = ewin->skin->lcd_pos.right * r + 0.5;
 	lcdtop = ewin->skin->lcd_pos.top * r + 0.5;
 	lcdbottom = ewin->skin->lcd_pos.bottom * r + 0.5;
+
+	if (ewin->emu->calc) {
+		constrain_lcd_box_aspect(&lcdleft, &lcdright, &lcdtop, &lcdbottom,
+		                         ewin->emu->calc->hw.lcdwidth,
+		                         effective_lcd_height(ewin->emu->calc,
+		                                              ewin->emu->calc->hw.lcdheight));
+	}
 
 	// Always scale background to window size
 	if (ewin->skin) {
@@ -420,7 +483,7 @@ void redraw_screen(TilemEmulatorWindow *ewin)
 		defheight = ewin->skin->height;
 
 		sx = (double) lcdwidth / screenwidth;
-		sy = (double) lcdheight / screenheight;
+		sy = (double) effective_lcd_height(ewin->emu->calc, lcdheight) / screenheight;
 		s = MAX(sx, sy);
 		minwidth = defwidth * s + 0.5;
 		minheight = defheight * s + 0.5;
@@ -436,7 +499,7 @@ void redraw_screen(TilemEmulatorWindow *ewin)
 		                 G_CALLBACK(noskin_size_allocate), ewin);
 
 		defwidth = minwidth = lcdwidth;
-		defheight = minheight = lcdheight;
+		defheight = minheight = effective_lcd_height(ewin->emu->calc, lcdheight);
 		ewin->base_zoom = 1.0;
 	}
 
@@ -511,6 +574,10 @@ void redraw_screen(TilemEmulatorWindow *ewin)
 		int lcdright = ewin->skin->lcd_pos.right * r + 0.5;
 		int lcdtop = ewin->skin->lcd_pos.top * r + 0.5;
 		int lcdbottom = ewin->skin->lcd_pos.bottom * r + 0.5;
+
+		constrain_lcd_box_aspect(&lcdleft, &lcdright, &lcdtop, &lcdbottom,
+		                         lcdwidth,
+		                         effective_lcd_height(ewin->emu->calc, lcdheight));
 
 		gtk_widget_set_size_request(ewin->lcd,
 		                            MAX(lcdright - lcdleft, 1),
