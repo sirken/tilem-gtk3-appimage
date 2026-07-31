@@ -73,3 +73,14 @@ lingering on the system afterward.
   manually, or a helper like AppImageLauncher on the end user's system.
 - A ROM image is required at runtime and is never bundled (not
   redistributable).
+- `linuxdeploy-plugin-gtk` normally forces `GDK_BACKEND=x11` (its own
+  comment: the bundled GTK3 "crash[es] with Wayland backend on Wayland").
+  `build-in-container.sh` patches that out of the generated AppRun hook,
+  because tilem2's window aspect-ratio hint is only enforced client-side
+  by GTK during interactive resize under Wayland -- under X11/XWayland it
+  depends on the window manager, which doesn't reliably honor it, causing
+  free-form resize distortion. This has been verified stable under KDE
+  Plasma/Wayland. If a future GTK/tilibs version update ever reintroduces
+  a Wayland crash, re-add `export GDK_BACKEND=x11` in that sed command in
+  `build-in-container.sh` as a fallback (interactive resize will go back
+  to being unconstrained, but the app will still run).
