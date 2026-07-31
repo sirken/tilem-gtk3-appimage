@@ -116,7 +116,6 @@ static gboolean screen_repaint(GtkWidget *w, cairo_t *cr,
 {
 	GtkAllocation alloc;
 	GdkWindow *win;
-	GtkStyle *style;
 	gboolean drawrgb;
 
 	gtk_widget_get_allocation(w, &alloc);
@@ -164,17 +163,14 @@ static gboolean screen_repaint(GtkWidget *w, cairo_t *cr,
 
 	skin_colors_t colors;
 	if (!ewin->skin) {
-		/* no skin -> use standard GTK colors */
+		/* no skin -> fixed black-on-white LCD colors. (Previously
+		   derived from the current GTK theme's text/base colors via
+		   the deprecated GtkStyle API, which made the emulated
+		   screen's contrast depend on the active theme and GTK
+		   version instead of looking the same everywhere.) */
 
-		style = gtk_widget_get_style(w);
-
-		colors.on[0] = style->text[GTK_STATE_NORMAL].red / 257;
-		colors.on[1] = style->text[GTK_STATE_NORMAL].green / 257;
-		colors.on[2] = style->text[GTK_STATE_NORMAL].blue / 257;
-
-		colors.off[0] = style->base[GTK_STATE_NORMAL].red / 257;
-		colors.off[1] = style->base[GTK_STATE_NORMAL].green / 257;
-		colors.off[2] = style->base[GTK_STATE_NORMAL].blue / 257;
+		colors.on[0] = colors.on[1] = colors.on[2] = 0x00;
+		colors.off[0] = colors.off[1] = colors.off[2] = 0xff;
 	}
 	else {
 		/* use skin colors */
