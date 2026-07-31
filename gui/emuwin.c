@@ -78,7 +78,7 @@ static gboolean window_maximized(TilemEmulatorWindow *ewin)
 }
 
 static void
-put_pixel (GdkPixbuf *pixbuf, int x, int y, gboolean pixel_is_on, skin_colors_t *colors)
+put_pixel (GdkPixbuf *pixbuf, int x, int y, int level, skin_colors_t *colors)
 {
 	int width, height, rowstride, n_channels;
 	guchar *pixels, *p;
@@ -99,16 +99,14 @@ put_pixel (GdkPixbuf *pixbuf, int x, int y, gboolean pixel_is_on, skin_colors_t 
 	pixels = gdk_pixbuf_get_pixels (pixbuf);
 
 	p = pixels + y * rowstride + x * n_channels;
-	if(pixel_is_on) {
-		p[0] = colors->on[0];
-		p[1] = colors->on[1];
-		p[2] = colors->on[2];
-	} else {
-		p[0] = colors->off[0];
-		p[1] = colors->off[1];
-		p[2] = colors->off[2];
-	}
-		
+	/* level is a 0-255 brightness/contrast value (0 = "off" color, 255 =
+	   "on" color, per get_contrast_settings() in emu/grayimage.c) -
+	   interpolate between the two colors rather than hard-thresholding,
+	   so multi-frame-blended grayscale (and single-frame antialiasing)
+	   actually renders as gray instead of collapsing to black/white. */
+	p[0] = colors->off[0] + (((colors->on[0] - colors->off[0]) * level) / 255);
+	p[1] = colors->off[1] + (((colors->on[1] - colors->off[1]) * level) / 255);
+	p[2] = colors->off[2] + (((colors->on[2] - colors->off[2]) * level) / 255);
 }
 
 static gboolean screen_repaint(GtkWidget *w, cairo_t *cr,
@@ -190,11 +188,9 @@ static gboolean screen_repaint(GtkWidget *w, cairo_t *cr,
 	int x, y;
 	for(y = 0; y < alloc.height; y++) {
 		for(x = 0; x < alloc.width; x++) {
-			if(ewin->lcd_image_buf[(y*alloc.width)+x] > 128) {
-				put_pixel(pixbuf, x, y, TRUE, &colors);
-			} else {
-				put_pixel(pixbuf, x, y, FALSE, &colors);
-			}
+			put_pixel(pixbuf, x, y,
+			          ewin->lcd_image_buf[(y*alloc.width)+x],
+			          &colors);
 		}
 	}
 	
